@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 // Create and return a pointer to an array of size rows and cols
 // populate with random value
 int* create_2d_array(int rows, int cols) {
     int* array = (int*)malloc(rows * cols * sizeof(int));
-srand(time(NULL));
+	srand(time(NULL));
     for (int i = 0; i < rows * cols; i++) {
 		
 		// Initialize with random number between 1-999
