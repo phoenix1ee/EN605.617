@@ -5,17 +5,56 @@
 #include <stdint.h>
 // For PRIu64
 #include <cinttypes>
-//time function
+//multi platform time function
+
+#if defined(_WIN32)
+
+#include <windows.h>
+
+// Windows replacement for struct timespec using QPC
+static inline void get_monotonic_timespec(struct timespec *ts) {
+    static LARGE_INTEGER freq;
+    static int initialized = 0;
+
+    if (!initialized) {
+        QueryPerformanceFrequency(&freq);
+        initialized = 1;
+    }
+
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+
+    // Convert QPC ticks → nanoseconds
+    uint64_t ns = (uint64_t)(counter.QuadPart * 1000000000ull / freq.QuadPart);
+
+    ts->tv_sec  = ns / 1000000000ull;
+    ts->tv_nsec = ns % 1000000000ull;
+}
+
 uint64_t get_nanos(struct timespec start) {
     struct timespec end;
-    // Get current time from the monotonic clock
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    
-    // Calculate difference: (seconds * 1e9) + nanoseconds
-    uint64_t diff = (uint64_t)(end.tv_sec - start.tv_sec) * 1000000000LL
-                  + (uint64_t)(end.tv_nsec - start.tv_nsec);
+    get_monotonic_timespec(&end);
+
+    uint64_t diff =
+        (uint64_t)(end.tv_sec - start.tv_sec) * 1000000000ull +
+        (uint64_t)(end.tv_nsec - start.tv_nsec);
+
     return diff;
 }
+
+#else
+//linux version
+uint64_t get_nanos(struct timespec start) {
+    struct timespec end;
+	// Get current time from the monotonic clock
+    clock_gettime(CLOCK_MONOTONIC, &end);
+	// Calculate difference: (seconds * 1e9) + nanoseconds
+    uint64_t diff =(uint64_t)(end.tv_sec - start.tv_sec) * 1000000000ull
+					+(uint64_t)(end.tv_nsec - start.tv_nsec);
+    return diff;
+}
+
+#endif
 
 // Create and return a pointer to an array of size rows and cols
 // populate with random value
@@ -118,7 +157,12 @@ int main(int argc, char** argv)
 
 	//GPU kernel
 	struct timespec start;
-	clock_gettime(CLOCK_MONOTONIC, &start);
+	//call different version under different system
+	#if defined(_WIN32)
+    get_monotonic_timespec(&start);
+	#else
+    clock_gettime(CLOCK_MONOTONIC, &start);
+	#endif
 	//allocate memory and copy to device
 	cudaMalloc((void **)&d_matrix, totalThreads*sizeof(int));
 	cudaMemcpy( d_matrix, matrix, totalThreads*sizeof(int), cudaMemcpyHostToDevice );
@@ -128,7 +172,7 @@ int main(int argc, char** argv)
 	dim3 dimGrid(numBlocks, 1, 1 );
 
 	/* Execute our kernel */
-	rowreduction<<<dimGrid, dimBlock>>>(d_matrix, bwidth, bheight*2);
+	rowreduction<<<dimGrid, dimBlock>>>(d_matrix, bwidth, bheight*numBlocks);
 	cudaDeviceSynchronize();
 	/* Free the arrays on the GPU as now we're done with them */
 	cudaMemcpy( matrix, d_matrix, totalThreads*sizeof(int), cudaMemcpyDeviceToHost );
@@ -161,7 +205,12 @@ int main(int argc, char** argv)
     }
 	*/
 
-	clock_gettime(CLOCK_MONOTONIC, &start);
+	//call different version under different system
+	#if defined(_WIN32)
+    get_monotonic_timespec(&start);
+	#else
+    clock_gettime(CLOCK_MONOTONIC, &start);
+	#endif
 	// Execute function
 	cpurowreduction(matrix, bheight*numBlocks,bwidth);
 	consumed = get_nanos(start);
