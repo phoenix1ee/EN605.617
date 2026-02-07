@@ -2,22 +2,19 @@
 #include <stdlib.h>
 #include <climits>
 #include <time.h>
-
-//time function
-#include <iostream>
-#include <chrono>
+#include <stdint.h>
 // For PRIu64
 #include <cinttypes>
-
-// Returns the count in nanoseconds as a 64-bit unsigned integer
-uint64_t get_nanos(std::chrono::steady_clock::time_point start) {
-    auto end = std::chrono::steady_clock::now();
+//time function
+uint64_t get_nanos(struct timespec start) {
+    struct timespec end;
+    // Get current time from the monotonic clock
+    clock_gettime(CLOCK_MONOTONIC, &end);
     
-    // Get the duration between the two points
-    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    
-    // returns the raw number of ticks (nanoseconds)
-    return (uint64_t)elapsed.count();
+    // Calculate difference: (seconds * 1e9) + nanoseconds
+    uint64_t diff = (uint64_t)(end.tv_sec - start.tv_sec) * 1000000000LL
+                  + (uint64_t)(end.tv_nsec - start.tv_nsec);
+    return diff;
 }
 
 // Create and return a pointer to an array of size rows and cols
@@ -60,10 +57,26 @@ __global__ void rowreduction(int *a, int width, int height)
 	}
 }
 
+//cpu function
+void cpurowreduction(int *a, int rows, int cols) 
+{
+	//find minimum of a row and subtract every element of that row by the min found
+	for (int i = 0; i < rows; i++) {
+        int min = INT_MAX;
+		// Indexing formula: row * width + column
+		for (int j = 0; j < cols; j++) {
+			if (a[i * cols + j]<min){
+				min = a[i * cols + j];
+			}
+        }
+		for (int j = 0; j < cols; j++) {
+			a[i * cols + j]-=min;
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
-	auto start = std::chrono::steady_clock::now();
 	// read command line arguments
 	int totalThreads = (1 << 20);
 	int blockSize = 256;
@@ -93,8 +106,19 @@ int main(int argc, char** argv)
 	int* matrix=create_2d_array(bheight*numBlocks,bwidth);
 	int* d_matrix;
 
-	printf("matrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
+	printf("GPU version:\nmatrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
+	/*
+	for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 32; j++) {
+            printf("%2d,", matrix[i * bwidth + j]);
+        }
+        printf("\n"); // New line after each row
+    }
+	*/
 
+	//GPU kernel
+	struct timespec start;
+	clock_gettime(CLOCK_MONOTONIC, &start);
 	//allocate memory and copy to device
 	cudaMalloc((void **)&d_matrix, totalThreads*sizeof(int));
 	cudaMemcpy( d_matrix, matrix, totalThreads*sizeof(int), cudaMemcpyHostToDevice );
@@ -109,13 +133,46 @@ int main(int argc, char** argv)
 	/* Free the arrays on the GPU as now we're done with them */
 	cudaMemcpy( matrix, d_matrix, totalThreads*sizeof(int), cudaMemcpyDeviceToHost );
 	cudaFree(d_matrix);
+	/*
 	//print points (i,j)<(10,32)
-	/*for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 32; j++) {
             printf("%2d ", matrix[i * bwidth + j]);
         }
         printf("\n"); // New line after each row
-    }*/
-   	uint64_t consumed = get_nanos(start);
-	printf("used time: %" PRIu64 "\n",consumed);
+    }
+	*/
+	uint64_t consumed = get_nanos(start);
+	printf("GPU used time: %" PRIu64 "\n",consumed);
+	printf("\n");
+
+	//CPU function
+	// create an arbitrary 2d-array
+	matrix=create_2d_array(bheight*numBlocks,bwidth);
+	printf("CPU version:\nmatrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
+	
+	/*
+	//print points (i,j)<(10,32)
+	for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 32; j++) {
+            printf("%2d,", matrix[i * bwidth + j]);
+        }
+        printf("\n"); // New line after each row
+    }
+	*/
+
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	// Execute function
+	cpurowreduction(matrix, bheight*numBlocks,bwidth);
+	consumed = get_nanos(start);
+		//print points (i,j)<(10,32)
+	/*
+	for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 32; j++) {
+            printf("%2d,", matrix[i * bwidth + j]);
+        }
+        printf("\n"); // New line after each row
+    }
+	*/
+	printf("CPU used time: %" PRIu64 "\n",consumed);
 }
