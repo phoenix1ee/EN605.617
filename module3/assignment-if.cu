@@ -44,7 +44,9 @@ __global__ void rowreduction(int *a, int width, int height)
 		// assume blockDim.x=32
 		// loop thru entire row to finds the 32 min for each row
 		for (int x = tid; x < width; x += 32) {
-			localMin = min(localMin, a[rowStart+x]);
+			if (a[rowStart+x]<localMin){
+				localMin = a[rowStart+x];
+			}
 		}
 		// find the real row minimum
 		for (int offset = 16; offset > 0; offset /= 2) {
