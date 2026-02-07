@@ -146,14 +146,6 @@ int main(int argc, char** argv)
 	int* d_matrix;
 
 	printf("GPU version:\nmatrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
-	/*
-	for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 32; j++) {
-            printf("%2d,", matrix[i * bwidth + j]);
-        }
-        printf("\n"); // New line after each row
-    }
-	*/
 
 	//GPU kernel
 	struct timespec start;
@@ -177,15 +169,7 @@ int main(int argc, char** argv)
 	/* Free the arrays on the GPU as now we're done with them */
 	cudaMemcpy( matrix, d_matrix, totalThreads*sizeof(int), cudaMemcpyDeviceToHost );
 	cudaFree(d_matrix);
-	/*
-	//print points (i,j)<(10,32)
-	for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 32; j++) {
-            printf("%2d ", matrix[i * bwidth + j]);
-        }
-        printf("\n"); // New line after each row
-    }
-	*/
+
 	uint64_t consumed = get_nanos(start);
 	printf("GPU used time: %" PRIu64 "\n",consumed);
 	printf("\n");
@@ -194,16 +178,6 @@ int main(int argc, char** argv)
 	// create an arbitrary 2d-array
 	matrix=create_2d_array(bheight*numBlocks,bwidth);
 	printf("CPU version:\nmatrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
-	
-	/*
-	//print points (i,j)<(10,32)
-	for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 32; j++) {
-            printf("%2d,", matrix[i * bwidth + j]);
-        }
-        printf("\n"); // New line after each row
-    }
-	*/
 
 	//call different version under different system
 	#if defined(_WIN32)
@@ -214,14 +188,6 @@ int main(int argc, char** argv)
 	// Execute function
 	cpurowreduction(matrix, bheight*numBlocks,bwidth);
 	consumed = get_nanos(start);
-		//print points (i,j)<(10,32)
-	/*
-	for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 32; j++) {
-            printf("%2d,", matrix[i * bwidth + j]);
-        }
-        printf("\n"); // New line after each row
-    }
-	*/
+
 	printf("CPU used time: %" PRIu64 "\n",consumed);
 }

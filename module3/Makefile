@@ -5,7 +5,8 @@ else
 endif
 
 linux:
-	nvcc assignment.cu -o assignment -lrt
+	# use -ccbin /usr/bin/gcc-11 for myself
+	nvcc assignment.cu -o assignment.exe -lrt
 
 windows:
 	nvcc assignment.cu -o assignment.exe
