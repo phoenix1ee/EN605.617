@@ -1,30 +1,46 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <climits>
+#include <time.h>
 
 // Create and return a pointer to an array of size rows and cols
 // populate with random value
 int* create_2d_array(int rows, int cols) {
-    int* array = (int*)malloc(rows * cols * sizeof(int));
-srand(time(NULL));
-    for (int i = 0; i < rows * cols; i++) {
-		
+    int* m = (int*)malloc(rows * cols * sizeof(int));
+	srand(time(NULL));
+    for (int i = 0; i < (rows * cols); i++) {
 		// Initialize with random number between 1-999
-        array[i] = rand() % 999+1;
+        m[i] = rand() % 999+1;		
     }
-    return array;
+    return m;
 }
 
 //kernel function
-__global__ void normalize(int *a, int min) 
+__global__ void rowreduction(int *a, int width, int height) 
 {
-	//total blocks
-	int totalblock = blockIdx.z*gridDim.x*gridDim.y;
-	int blocksize = blockDim.x*blockDim.y*blockDim.z;
-	int globalthread_id = totalblock*blocksize + blockDim.x*blockDim.y*threadIdx.z + blockDim.x*threadIdx.y + threadIdx.x;
-	//normalization by an amount "min" if the element is >min
-	if (a[globalthread_id] > min) {
-        a[globalthread_id] = a[globalthread_id]-min;
-    }
+	int blockoffset = (blockIdx.z*gridDim.x*gridDim.y) + (gridDim.x*blockIdx.y) + blockIdx.x;
+	int gridsize = gridDim.x*gridDim.y*gridDim.z;
+	for (int row = blockoffset; row < height; row += gridsize) {
+		//use each block as for a row
+		int rowStart = row * width;
+		//find minimum
+		int localMin = INT_MAX;
+		int tid = threadIdx.x;
+		// assume blockDim.x=32
+		// 1. Grid-Stride Loop: Handle rows wider than 32 elements
+		// loop thru entire row to finds the 32 min for each row
+		for (int x = tid; x < width; x += 32) {
+			localMin = min(localMin, a[rowStart+x]);
+		}
+		// find the real row minimum
+		for (int offset = 16; offset > 0; offset /= 2) {
+			localMin = min(localMin, __shfl_down_sync(0xffffffff, localMin, offset));
+		}
+		int rowMin = __shfl_sync(0xffffffff, localMin, 0);
+		for (int x = tid; x < width; x += 32) {
+			a[rowStart+x] -= rowMin;
+		}
+	}
 }
 
 
@@ -52,46 +68,34 @@ int main(int argc, char** argv)
 		printf("The total number of threads will be rounded up to %d\n", totalThreads);
 	}
 	//block dimension
-	int width = 32;
-	int height = blockSize/width;
+	int bwidth = 32;
+	int bheight = blockSize/bwidth;
 
-	// an arbitrary value
-	int normalizamount = 1;
-
-	// create 2d-array
-	int* matrix=create_2d_array(height*numBlocks,width);
+	// create an arbitrary 2d-array
+	int* matrix=create_2d_array(bheight*numBlocks,bwidth);
 	int* d_matrix;
 
-	for (int i = 0; i < height*numBlocks; i++) {
-        for (int j = 0; j < width; j++) {
-            // Indexing formula: row * width + column
-            printf("%4d ", matrix[i * width + j]);
-        }
-        printf("\n"); // New line after each row
-    }
-
-	printf("\n");
+	printf("matrix size= row %d * col %d\n",(bheight*numBlocks),bwidth);
 
 	//allocate memory and copy to device
 	cudaMalloc((void **)&d_matrix, totalThreads*sizeof(int));
 	cudaMemcpy( d_matrix, matrix, totalThreads*sizeof(int), cudaMemcpyHostToDevice );
 
 	//define grid and block size
-	dim3 dimBlock( 32, height, 1 );
+	dim3 dimBlock( bwidth, bheight, 1 );
 	dim3 dimGrid(numBlocks, 1, 1 );
 
 	/* Execute our kernel */
-	normalize<<<dimGrid, dimBlock>>>(d_matrix, normalizamount);
+	rowreduction<<<dimGrid, dimBlock>>>(d_matrix, bwidth, bheight*2);
 	cudaDeviceSynchronize();
 	/* Free the arrays on the GPU as now we're done with them */
 	cudaMemcpy( matrix, d_matrix, totalThreads*sizeof(int), cudaMemcpyDeviceToHost );
 	cudaFree(d_matrix);
-
-	for (int i = 0; i < height*numBlocks; i++) {
-        for (int j = 0; j < width; j++) {
-            // Indexing formula: row * width + column
-            printf("%4d ", matrix[i * width + j]);
+	//print points (i,j)<(10,32)
+	/*for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 32; j++) {
+            printf("%2d ", matrix[i * bwidth + j]);
         }
         printf("\n"); // New line after each row
-    }
+    }*/
 }
