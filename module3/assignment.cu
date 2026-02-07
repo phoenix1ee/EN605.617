@@ -3,6 +3,23 @@
 #include <climits>
 #include <time.h>
 
+//time function
+#include <iostream>
+#include <chrono>
+// For PRIu64
+#include <cinttypes>
+
+// Returns the count in nanoseconds as a 64-bit unsigned integer
+uint64_t get_nanos(std::chrono::steady_clock::time_point start) {
+    auto end = std::chrono::steady_clock::now();
+    
+    // Get the duration between the two points
+    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    
+    // returns the raw number of ticks (nanoseconds)
+    return (uint64_t)elapsed.count();
+}
+
 // Create and return a pointer to an array of size rows and cols
 // populate with random value
 int* create_2d_array(int rows, int cols) {
@@ -46,6 +63,7 @@ __global__ void rowreduction(int *a, int width, int height)
 
 int main(int argc, char** argv)
 {
+	auto start = std::chrono::steady_clock::now();
 	// read command line arguments
 	int totalThreads = (1 << 20);
 	int blockSize = 256;
@@ -98,4 +116,6 @@ int main(int argc, char** argv)
         }
         printf("\n"); // New line after each row
     }*/
+   	uint64_t consumed = get_nanos(start);
+	printf("used time: %" PRIu64 "\n",consumed);
 }
